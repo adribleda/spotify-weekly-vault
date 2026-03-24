@@ -136,7 +136,10 @@ def add_tracks_to_playlist(token, playlist_id, track_uris):
 # ─────────────────────────────────────────────
 
 def main():
-    playlist_id = os.environ.get("SPOTIFY_PLAYLIST_ID", "4DKniCfecXgSOs550jjYu6")
+    playlist_id = os.environ.get("SPOTIFY_PLAYLIST_ID")
+    if not playlist_id:
+        print("❌  SPOTIFY_PLAYLIST_ID secret is not set. Add it in GitHub Secrets.")
+        sys.exit(1)
 
     print("=" * 50)
     print("  spotify-weekly-vault")
