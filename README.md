@@ -58,22 +58,60 @@ This is how you get permission to connect this tool to your Spotify account. It'
 
 This script opens your browser, asks you to authorize Spotify, and gives you a **Refresh Token** (a permanent key the tool uses to access your account automatically).
 
-**Requirements:** Python 3.8 or later. Check by opening Terminal (Mac/Linux) or Command Prompt (Windows) and typing:
-```
-python --version
-```
+**First — download the script:**
+
+If you haven't already, download `setup_auth.py` from this repository. Click on the file → then click the **Download raw file** button (the arrow icon at the top right). Save it to your **Downloads** folder.
+
+---
+
+**Check that Python is installed:**
+
+- **Mac/Linux** — open Terminal and type:
+  ```
+  python3 --version
+  ```
+- **Windows** — open Command Prompt and type:
+  ```
+  python --version
+  ```
+
 If you see a version number starting with 3, you're good.
 
+---
+
+**Navigate to the folder where you saved the file:**
+
+- **If you saved it in Downloads:**
+  ```
+  cd ~/Downloads
+  ```
+- **If you saved it somewhere else**, right-click the file → Get Info (Mac) or Properties (Windows) → copy the folder path, then type:
+  ```
+  cd /paste/the/path/here
+  ```
+
+---
+
 **Run the script:**
-```bash
-python setup_auth.py
-```
+
+- **Mac/Linux:**
+  ```
+  python3 setup_auth.py
+  ```
+- **Windows:**
+  ```
+  python setup_auth.py
+  ```
 
 Follow the prompts:
 - Paste your **Client ID** when asked
 - Paste your **Client Secret** when asked
 - Your browser will open — click **Agree** to authorize
-- Come back to the terminal
+- Your browser will then show an error page — that is **normal**
+- Look at the address bar: copy the full URL starting with `http://127.0.0.1:8888/callback?code=...`
+- Paste that URL back in the terminal
+
+> ⚠️ Make sure your terminal window is **full screen** before copying the token at the end. If the window is too narrow, the token gets split across lines and may break.
 
 At the end you'll see something like:
 ```
