@@ -1,0 +1,33 @@
+name: Weekly Top Tracks
+
+on:
+  schedule:
+    # Every Sunday at 20:00 UTC (21:00 Spain in winter, 22:00 in summer)
+    - cron: "0 20 * * 0"
+
+  # Allows you to run this manually from GitHub's website (for testing)
+  workflow_dispatch:
+
+jobs:
+  add-weekly-top:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run weekly top tracks script
+        env:
+          SPOTIFY_CLIENT_ID:     ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+          SPOTIFY_PLAYLIST_ID:   ${{ secrets.SPOTIFY_PLAYLIST_ID }}
+        run: python weekly_top.py
