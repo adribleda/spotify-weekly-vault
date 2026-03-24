@@ -152,15 +152,41 @@ def main():
 
     # ── Wait for callback ─────────────────────────────────────────
     print("⏳  Waiting for you to authorize in the browser...")
-    server_thread.join(timeout=120)
+    print("   (You have 60 seconds)\n")
+    server_thread.join(timeout=60)
 
     if auth_error:
         print(f"\n❌  Spotify returned an error: {auth_error}")
         sys.exit(1)
 
     if not auth_code:
-        print("\n❌  Timed out waiting for authorization. Please try again.")
-        sys.exit(1)
+        print("\n⚠️   The automatic capture didn't work. No problem — do this instead:")
+        print()
+        print("  1. Go back to your browser")
+        print("  2. Look at the address bar — it should show a URL starting with:")
+        print("     http://localhost:8888/callback?code=...")
+        print("  3. Copy that FULL URL and paste it below")
+        print()
+        manual_url = input("Paste the full URL from your browser here: ").strip()
+
+        if not manual_url:
+            print("\n❌  No URL provided. Please try again.")
+            sys.exit(1)
+
+        parsed      = urllib.parse.urlparse(manual_url)
+        url_params  = urllib.parse.parse_qs(parsed.query)
+
+        if "error" in url_params:
+            print(f"\n❌  Spotify returned an error: {url_params['error'][0]}")
+            sys.exit(1)
+
+        if "code" not in url_params:
+            print("\n❌  Could not find the authorization code in that URL.")
+            print("    Make sure you copied the full URL from the address bar.")
+            sys.exit(1)
+
+        auth_code = url_params["code"][0]
+        print("✅  Got the authorization code from the URL.")
 
     # ── Exchange code for tokens ──────────────────────────────────
     try:
