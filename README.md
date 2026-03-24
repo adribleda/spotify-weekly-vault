@@ -43,67 +43,30 @@ This is how you get permission to connect this tool to your Spotify account. It'
 4. Fill in the form:
    - **App name**: `weekly-vault` (or any name you like)
    - **App description**: anything, e.g. `Weekly top tracks tool`
-   - - **Redirect URI**: paste this exactly → `http://127.0.0.1:8888/callback`
-   - **Which API/SDKs are you planning to use?** → check **Web API** only
+   - **Redirect URI**: paste this exactly → `http://127.0.0.1:8888/callback`
    - Check the box to accept the Terms of Service
 5. Click **Save**
-6. On the next screen, on **Basic Information**
+6. On the next screen, click **Settings**
 7. You'll see your **Client ID** — copy it somewhere safe
 8. Click **View client secret** — copy that too
 
 > ⚠️ These are like passwords. Don't share them or put them in the code.
+
 ---
+
 ### Step 3 — Run the setup script on your computer
 
 This script opens your browser, asks you to authorize Spotify, and gives you a **Refresh Token** (a permanent key the tool uses to access your account automatically).
 
-**First — download the script:**
-
-If you haven't already, download `setup_auth.py` from this repository to your computer. The easiest way is to click on the file → then click the **Download raw file** button (the arrow icon at the top right).
-
-Save it somewhere you'll remember, like your **Downloads** folder.
-
----
-
-**Check that Python is installed:**
-
-- **Mac/Linux** — open Terminal and type:
+**Requirements:** Python 3.8 or later. Check by opening Terminal (Mac/Linux) or Command Prompt (Windows) and typing:
 ```
-  python3 --version
+python --version
 ```
-- **Windows** — open Command Prompt and type:
-```
-  python --version
-```
-
 If you see a version number starting with 3, you're good.
 
----
-
-**Navigate to the folder where you saved the file:**
-
-Before running the script, you need to tell the terminal where the file is. Type `cd` followed by the folder name:
-
-- **If you saved it in Downloads:**
-```
-  cd ~/Downloads
-```
-- **If you saved it somewhere else**, right-click the file → Get Info (Mac) or Properties (Windows) → copy the folder path, then type:
-```
-  cd /paste/the/path/here
-```
-
----
-
 **Run the script:**
-
-- **Mac/Linux:**
-```
-  python3 setup_auth.py
-```
-- **Windows:**
-```
-  python setup_auth.py
+```bash
+python setup_auth.py
 ```
 
 Follow the prompts:
@@ -117,10 +80,11 @@ At the end you'll see something like:
 SPOTIFY_CLIENT_ID       →  abc123...
 SPOTIFY_CLIENT_SECRET   →  xyz789...
 SPOTIFY_REFRESH_TOKEN   →  AQD...
-SPOTIFY_PLAYLIST_ID     →  4DKniCfecXgSOs550jjYu6
+SPOTIFY_PLAYLIST_ID     →  (see below — you choose this)
 ```
 
 **Copy all four values.** You'll need them in the next step.
+
 ---
 
 ### Step 4 — Add your secrets to GitHub
@@ -130,16 +94,37 @@ SPOTIFY_PLAYLIST_ID     →  4DKniCfecXgSOs550jjYu6
 1. Go to your forked repository on GitHub
 2. Click **Settings** (top menu of the repo)
 3. In the left sidebar, click **Secrets and variables** → **Actions**
-4. Click **New repository secret** and add each of the four values:
+4. Click **New repository secret**
 
-| Name | Value |
-|---|---|
-| `SPOTIFY_CLIENT_ID` | Your Client ID from Step 2 |
-| `SPOTIFY_CLIENT_SECRET` | Your Client Secret from Step 2 |
-| `SPOTIFY_REFRESH_TOKEN` | The token from Step 3 |
-| `SPOTIFY_PLAYLIST_ID` | Your playlist ID (or `4DKniCfecXgSOs550jjYu6` if using the default) |
+You need to add **4 secrets**, one at a time. Each secret has two fields: **Name** and **Value**. Fill them in exactly as shown below, then click **Add secret**. Then repeat for the next one.
 
-Add them one by one: type the name, paste the value, click **Add secret**.
+> ⚠️ Each secret goes in its own separate entry — do NOT paste all values together in one field.
+
+**Secret 1**
+- Name: `SPOTIFY_CLIENT_ID`
+- Value: your Client ID from Step 2 (e.g. `e803460b...`)
+
+**Secret 2**
+- Name: `SPOTIFY_CLIENT_SECRET`
+- Value: your Client Secret from Step 2 (e.g. `42a4ed85...`)
+
+**Secret 3**
+- Name: `SPOTIFY_REFRESH_TOKEN`
+- Value: the long token from Step 3 (starts with `AQ...`)
+
+> ⚠️ When copying the token from the terminal, make sure your terminal window is **full screen**. If the window is too narrow, the token gets split across lines and copying it may add a hidden dash (`-`) in the middle, which breaks it. Copy the token as a single unbroken line.
+
+**Secret 4**
+- Name: `SPOTIFY_PLAYLIST_ID`
+- Value: your playlist ID (see [How to change the playlist](#how-to-change-the-playlist) below)
+
+After adding all four, you should see them listed like this — with dots hiding the values:
+```
+SPOTIFY_CLIENT_ID        ••••••••
+SPOTIFY_CLIENT_SECRET    ••••••••
+SPOTIFY_REFRESH_TOKEN    ••••••••
+SPOTIFY_PLAYLIST_ID      ••••••••
+```
 
 ---
 
