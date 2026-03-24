@@ -47,7 +47,7 @@ This is how you get permission to connect this tool to your Spotify account. It'
    - **Which API/SDKs are you planning to use?** → check **Web API** only
    - Check the box to accept the Terms of Service
 5. Click **Save**
-6. On the next screen, click **Settings**
+6. On the next screen, on **Basic Information**
 7. You'll see your **Client ID** — copy it somewhere safe
 8. Click **View client secret** — copy that too
 
