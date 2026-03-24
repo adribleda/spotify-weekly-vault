@@ -43,7 +43,7 @@ This is how you get permission to connect this tool to your Spotify account. It'
 4. Fill in the form:
    - **App name**: `weekly-vault` (or any name you like)
    - **App description**: anything, e.g. `Weekly top tracks tool`
-   - **Redirect URI**: paste this exactly → `http://localhost:8888/callback`
+   - - **Redirect URI**: paste this exactly → `http://127.0.0.1:8888/callback`
    - **Which API/SDKs are you planning to use?** → check **Web API** only
    - Check the box to accept the Terms of Service
 5. Click **Save**
