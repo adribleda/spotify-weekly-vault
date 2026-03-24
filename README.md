@@ -59,14 +59,27 @@ This is how you get permission to connect this tool to your Spotify account. It'
 This script opens your browser, asks you to authorize Spotify, and gives you a **Refresh Token** (a permanent key the tool uses to access your account automatically).
 
 **Requirements:** Python 3.8 or later. Check by opening Terminal (Mac/Linux) or Command Prompt (Windows) and typing:
+
+- **Mac/Linux:**
 ```
-python --version
+  python3 --version
 ```
+- **Windows:**
+```
+  python --version
+```
+
 If you see a version number starting with 3, you're good.
 
 **Run the script:**
-```bash
-python setup_auth.py
+
+- **Mac/Linux:**
+```
+  python3 setup_auth.py
+```
+- **Windows:**
+```
+  python setup_auth.py
 ```
 
 Follow the prompts:
@@ -84,7 +97,6 @@ SPOTIFY_PLAYLIST_ID     →  4DKniCfecXgSOs550jjYu6
 ```
 
 **Copy all four values.** You'll need them in the next step.
-
 ---
 
 ### Step 4 — Add your secrets to GitHub
