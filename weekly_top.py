@@ -28,7 +28,6 @@ def get_access_token():
     client_secret = os.environ["SPOTIFY_CLIENT_SECRET"]
     refresh_token = os.environ["SPOTIFY_REFRESH_TOKEN"]
 
-    # Spotify requires credentials encoded in base64
     credentials = b64encode(f"{client_id}:{client_secret}".encode()).decode()
 
     response = requests.post(
@@ -40,6 +39,15 @@ def get_access_token():
         },
         timeout=15,
     )
+
+    # ── DIAGNOSTIC: print what Spotify actually returned ──
+    if not response.ok:
+        print(f"[DIAG] Token request failed {response.status_code}: {response.text}")
+    else:
+        data = response.json()
+        granted_scopes = data.get("scope", "(no scope field returned)")
+        print(f"[DIAG] Token granted. Scopes: {granted_scopes}")
+
     response.raise_for_status()
     return response.json()["access_token"]
 
@@ -55,7 +63,7 @@ def get_recently_played(token):
     Returns a list of dicts: {uri, name, artist}
     """
     week_ago  = datetime.now(timezone.utc) - timedelta(days=7)
-    after_ms  = int(week_ago.timestamp() * 1000)   # Spotify uses milliseconds
+    after_ms  = int(week_ago.timestamp() * 1000)
 
     headers  = {"Authorization": f"Bearer {token}"}
     url      = (
@@ -64,6 +72,8 @@ def get_recently_played(token):
     )
 
     response = requests.get(url, headers=headers, timeout=15)
+    if not response.ok:
+        print(f"[DIAG] recently-played failed {response.status_code}: {response.text}")
     response.raise_for_status()
     data = response.json()
 
@@ -98,6 +108,11 @@ def get_playlist_track_uris(token, playlist_id):
 
     while url:
         response = requests.get(url, headers=headers, timeout=15)
+
+        # ── DIAGNOSTIC: print Spotify's exact error body ──
+        if not response.ok:
+            print(f"[DIAG] Playlist read failed {response.status_code}: {response.text}")
+
         response.raise_for_status()
         data = response.json()
 
@@ -105,7 +120,7 @@ def get_playlist_track_uris(token, playlist_id):
             if item.get("track"):
                 uris.add(item["track"]["uri"])
 
-        url = data.get("next")   # None when there are no more pages
+        url = data.get("next")
 
     return uris
 
@@ -128,6 +143,8 @@ def add_tracks_to_playlist(token, playlist_id, track_uris):
         json={"uris": track_uris, "position": 0},
         timeout=15,
     )
+    if not response.ok:
+        print(f"[DIAG] Add tracks failed {response.status_code}: {response.text}")
     response.raise_for_status()
 
 
@@ -174,7 +191,7 @@ def main():
         counter[track["uri"]] += 1
         track_info[track["uri"]] = f"{track['name']} — {track['artist']}"
 
-    ranked = counter.most_common()   # Sorted: most played first
+    ranked = counter.most_common()
 
     print("\n  Your weekly ranking:")
     for i, (uri, count) in enumerate(ranked[:10], 1):
