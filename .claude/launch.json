@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "weekly-vault-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "webapp/preview", "-p", "3737", "--no-clipboard"],
+      "port": 3737
+    }
+  ]
+}

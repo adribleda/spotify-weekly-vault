@@ -1,0 +1,19 @@
+name              = "weekly-vault"
+main              = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# ── KV Namespace ──────────────────────────────────────────────────────────────
+# After running `wrangler kv:namespace create USERS_KV`, paste the id below.
+[[kv_namespaces]]
+binding = "USERS_KV"
+id      = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# ── Cron Trigger ──────────────────────────────────────────────────────────────
+# Every Sunday at 20:00 UTC
+[triggers]
+crons = ["0 20 * * 0"]
+
+# ── Public env vars ───────────────────────────────────────────────────────────
+# Update REDIRECT_URI after your first deploy (you'll know the workers.dev URL).
+[vars]
+REDIRECT_URI = "https://weekly-vault.YOUR_SUBDOMAIN.workers.dev/auth/callback"
