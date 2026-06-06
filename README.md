@@ -1,284 +1,120 @@
-# 🎵 spotify-weekly-vault
+# spotify-weekly-vault
 
-Automatically adds your **3 most-played songs of the week** to a Spotify playlist every Sunday — skipping any tracks already in it.
+Automatiza una playlist de Spotify con tus canciones mas escuchadas de la semana.
 
-No apps to install. No subscriptions. 100% free.
+El repositorio hace dos cosas:
 
----
+1. Cada 30 minutos guarda tus escuchas recientes en la cache de GitHub Actions.
+2. Cada domingo a las 20:00 UTC calcula el top semanal y añade las 3 primeras canciones que aun no esten en tu playlist.
 
-## How it works
+Esto evita el fallo principal de una ejecucion semanal unica: Spotify limita `recently-played` a 50 items por llamada, asi que hay que recolectar durante la semana para no perder escuchas si usas Spotify bastante. Referencia oficial: [Get Recently Played Tracks](https://developer.spotify.com/documentation/web-api/reference/get-recently-played).
 
-Every Sunday at 20:00 UTC the tool:
+## Setup rapido
 
-1. Looks at everything you've listened to on Spotify in the past 7 days
-2. Ranks those songs by how many times you played them
-3. Picks the top 3 that aren't already in your chosen playlist
-4. Adds them automatically
+### 1. Haz fork del repositorio
 
-If a song is already in the playlist, it moves down the ranking until it finds one that isn't.
+En GitHub, pulsa **Fork** y crea tu copia.
 
----
+### 2. Crea una Spotify Developer App
 
-## Setup guide (one-time, ~15 minutes)
+1. Abre [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
+2. Crea una app.
+3. En **Redirect URIs**, añade exactamente:
 
-### Step 1 — Fork this repository
-
-"Forking" means making your own personal copy of this project on your GitHub account.
-
-1. Make sure you're logged into [github.com](https://github.com)
-2. Click the **Fork** button at the top-right of this page
-3. Click **Create fork**
-
-You now have your own copy at `github.com/YOUR_USERNAME/spotify-weekly-vault`.
-
----
-
-### Step 2 — Create a Spotify Developer App
-
-This is how you get permission to connect this tool to your Spotify account. It's free.
-
-1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
-2. Log in with your normal Spotify account
-3. Click **Create app**
-4. Fill in the form:
-   - **App name**: `weekly-vault` (or any name you like)
-   - **App description**: anything, e.g. `Weekly top tracks tool`
-   - **Redirect URI**: paste this exactly → `http://127.0.0.1:8888/callback`
-   - Check the box to accept the Terms of Service
-5. Click **Save**
-6. On the next screen, click **Settings**
-7. You'll see your **Client ID** — copy it somewhere safe
-8. Click **View client secret** — copy that too
-
-> ⚠️ These are like passwords. Don't share them or put them in the code.
-
----
-
-### Step 3 — Run the setup script on your computer
-
-This script opens your browser, asks you to authorize Spotify, and gives you a **Refresh Token** (a permanent key the tool uses to access your account automatically).
-
-**First — download the script:**
-
-If you haven't already, download `setup_auth.py` from this repository. Click on the file → then click the **Download raw file** button (the arrow icon at the top right). Save it to your **Downloads** folder.
-
----
-
-**Check that Python is installed:**
-
-- **Mac/Linux** — open Terminal and type:
-  ```
-  python3 --version
-  ```
-- **Windows** — open Command Prompt and type:
-  ```
-  python --version
-  ```
-
-If you see a version number starting with 3, you're good.
-
----
-
-**Navigate to the folder where you saved the file:**
-
-- **If you saved it in Downloads:**
-  ```
-  cd ~/Downloads
-  ```
-- **If you saved it somewhere else**, right-click the file → Get Info (Mac) or Properties (Windows) → copy the folder path, then type:
-  ```
-  cd /paste/the/path/here
-  ```
-
----
-
-**Run the script:**
-
-- **Mac/Linux:**
-  ```
-  python3 setup_auth.py
-  ```
-- **Windows:**
-  ```
-  python setup_auth.py
-  ```
-
-Follow the prompts:
-- Paste your **Client ID** when asked
-- Paste your **Client Secret** when asked
-- Your browser will open — click **Agree** to authorize
-- Your browser will then show an error page — that is **normal**
-- Look at the address bar: copy the full URL starting with `http://127.0.0.1:8888/callback?code=...`
-- Paste that URL back in the terminal
-
-> ⚠️ Make sure your terminal window is **full screen** before copying the token at the end. If the window is too narrow, the token gets split across lines and may break.
-
-At the end you'll see something like:
-```
-SPOTIFY_CLIENT_ID       →  abc123...
-SPOTIFY_CLIENT_SECRET   →  xyz789...
-SPOTIFY_REFRESH_TOKEN   →  AQD...
-SPOTIFY_PLAYLIST_ID     →  (see below — you choose this)
+```text
+http://127.0.0.1:8888/callback
 ```
 
-**Copy all four values.** You'll need them in the next step.
+4. Guarda el **Client ID** y el **Client Secret**.
 
----
+### 3. Ejecuta el setup
 
-### Step 4 — Add your secrets to GitHub
+Clona tu fork o descarga este repo y ejecuta:
 
-"Secrets" is GitHub's secure vault for storing passwords and tokens. Your code can use them without anyone being able to see their values — not even you, once saved.
-
-1. Go to your forked repository on GitHub
-2. Click **Settings** (top menu of the repo)
-3. In the left sidebar, click **Secrets and variables** → **Actions**
-4. Click **New repository secret**
-
-You need to add **4 secrets**, one at a time. Each secret has two fields: **Name** and **Value**. Fill them in exactly as shown below, then click **Add secret**. Then repeat for the next one.
-
-> ⚠️ Each secret goes in its own separate entry — do NOT paste all values together in one field.
-
-**Secret 1**
-- Name: `SPOTIFY_CLIENT_ID`
-- Value: your Client ID from Step 2 (e.g. `e803460b...`)
-
-**Secret 2**
-- Name: `SPOTIFY_CLIENT_SECRET`
-- Value: your Client Secret from Step 2 (e.g. `42a4ed85...`)
-
-**Secret 3**
-- Name: `SPOTIFY_REFRESH_TOKEN`
-- Value: the long token from Step 3 (starts with `AQ...`)
-
-> ⚠️ When copying the token from the terminal, make sure your terminal window is **full screen**. If the window is too narrow, the token gets split across lines and copying it may add a hidden dash (`-`) in the middle, which breaks it. Copy the token as a single unbroken line.
-
-**Secret 4**
-- Name: `SPOTIFY_PLAYLIST_ID`
-- Value: your playlist ID (see [How to change the playlist](#how-to-change-the-playlist) below)
-
-After adding all four, you should see them listed like this — with dots hiding the values:
-```
-SPOTIFY_CLIENT_ID        ••••••••
-SPOTIFY_CLIENT_SECRET    ••••••••
-SPOTIFY_REFRESH_TOKEN    ••••••••
-SPOTIFY_PLAYLIST_ID      ••••••••
+```bash
+python3 setup_auth.py --github-repo TU_USUARIO/spotify-weekly-vault
 ```
 
----
+El script:
 
-### Step 5 — Test it manually
+- te pide el Client ID, Client Secret y el enlace o ID de tu playlist;
+- abre Spotify en el navegador;
+- recibe el callback automaticamente;
+- si tienes GitHub CLI (`gh`) instalado y autenticado, sube los secrets al repo.
 
-Before waiting for Sunday, let's make sure everything works.
+Si no tienes `gh`, el script imprimira estos secrets para que los pegues manualmente en **Settings -> Secrets and variables -> Actions**:
 
-1. In your repository, click the **Actions** tab
-2. On the left, click **Weekly Top Tracks**
-3. Click **Run workflow** → **Run workflow**
-4. Wait ~30 seconds, then click the run to see the log
-
-You should see something like:
-```
-✅  Authenticated with Spotify
-📊  34 plays recorded this week
-➕  Added: Satélites — Baiuca (8 plays)
-➕  Added: Quiero — Bad Gyal (5 plays)
-➕  Added: Rosa — Vetusta Morla (4 plays)
-✅  Done! Added 3 track(s) to your playlist.
+```text
+SPOTIFY_CLIENT_ID
+SPOTIFY_CLIENT_SECRET
+SPOTIFY_REFRESH_TOKEN
+SPOTIFY_PLAYLIST_ID
 ```
 
-If you see a ❌ error, here are the most common causes:
+### 4. Prueba la accion
 
-| Error message | What to check |
-|---|---|
-| `Authentication failed` | Your Client ID, Client Secret or Refresh Token are wrong. Re-run `setup_auth.py` to get a new token. |
-| `No plays found in the last 7 days` | Your Spotify account needs "Recently Played" history enabled, and plays must have happened while online. |
-| `Could not read playlist` | Your `SPOTIFY_PLAYLIST_ID` secret is wrong, or the playlist doesn't belong to your account. |
-| `This workflow is disabled` | Go to Actions → Weekly Top Tracks → click **Enable workflow**. |
+En tu fork:
 
----
+1. Ve a **Actions -> Spotify Weekly Vault**.
+2. Pulsa **Run workflow**.
+3. Deja `mode` en `run`.
 
-## How to change the playlist
+La primera ejecucion recolectara lo que Spotify devuelva ahora y luego intentara añadir el top disponible. A partir de ahi, GitHub Actions seguira recolectando solo.
 
-If you want to use a different playlist:
+El historial se restaura y guarda con `actions/cache`; no se commitea al repositorio.
 
-1. Open Spotify → go to the playlist
-2. Click the three dots (···) → **Share** → **Copy link to playlist**
-3. The link looks like: `https://open.spotify.com/playlist/`**`XXXXXXXXXXXX`**
-4. That last part is the ID
-5. Go to your GitHub repo → Settings → Secrets → update `SPOTIFY_PLAYLIST_ID`
+## Configuracion
 
----
+Puedes cambiar estos valores en `.github/workflows/weekly.yml`:
 
-## Schedule
+```yaml
+SPOTIFY_TRACKS_TO_ADD: "3"
+SPOTIFY_LOOKBACK_DAYS: "7"
+SPOTIFY_HISTORY_RETENTION_DAYS: "14"
+```
 
-The tool runs every **Sunday at 20:00 UTC**, which is:
+El horario semanal esta en cron UTC:
 
-| 🌍 Location | 🕐 Winter time | ☀️ Summer time |
-|---|---|---|
-| 🇪🇸 Spain | 21:00 | 22:00 |
-| 🇬🇧 UK | 20:00 | 21:00 |
-| 🇺🇸 New York (ET) | 15:00 | 16:00 |
-| 🇺🇸 Chicago (CT) | 14:00 | 15:00 |
-| 🇺🇸 Denver (MT) | 13:00 | 14:00 |
-| 🇺🇸 Los Angeles (PT) | 12:00 | 13:00 |
+```yaml
+- cron: "0 20 * * 0"
+```
 
-To change the schedule, edit `.github/workflows/weekly.yml` and update the cron line.
-[Crontab.guru](https://crontab.guru) is a handy tool for building cron schedules.
+En Espana son las 21:00 en horario de invierno y las 22:00 en horario de verano.
 
----
+## Modos manuales
 
-## Pausing and resuming
+Desde Actions, el desplegable `mode` permite:
 
-You can pause the automatic Sunday runs at any time — no code changes needed.
+- `collect`: solo guarda escuchas recientes.
+- `add`: calcula el ranking desde el historial guardado y actualiza la playlist.
+- `run`: hace `collect` y luego `add`.
 
-**To pause:**
-1. Go to your repository on GitHub
-2. Click the **Actions** tab (top menu)
-3. On the left, click **Weekly Top Tracks**
-4. Click the **···** button (top right of the page)
-5. Click **Disable workflow**
+En local tambien puedes ejecutar:
 
-The script will stop running on Sundays. Your playlist and all your settings stay untouched.
+```bash
+python3 weekly_top.py collect
+python3 weekly_top.py add --dry-run
+python3 weekly_top.py run
+```
 
-**To resume:**
-Follow the same steps and click **Enable workflow** instead.
+Necesitas tener las variables de entorno configuradas si lo ejecutas fuera de GitHub Actions.
 
-> You can also run it manually at any time — even while paused — using the **Run workflow** button on that same page.
+## Errores comunes
 
----
+`Missing GitHub secret(s)`
 
-## Troubleshooting
+Falta algun secret en **Settings -> Secrets and variables -> Actions**.
 
-**"No plays found in the last 7 days"**
-→ Make sure your Spotify account has "Recently Played" history enabled. Also, plays must have been on a device connected to your account while online.
+`Authentication failed`
 
-**"Authentication failed"**
-→ Double-check that your `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, and `SPOTIFY_REFRESH_TOKEN` secrets are correct. Re-run `setup_auth.py` to get a fresh refresh token.
+El Client ID, Client Secret o Refresh Token no cuadran. Ejecuta de nuevo `setup_auth.py`.
 
-**"Could not read playlist"**
-→ Check that `SPOTIFY_PLAYLIST_ID` is correct and that the playlist belongs to your account.
+`SPOTIFY_PLAYLIST_ID`
 
-**Actions tab shows "This workflow is disabled"**
-→ Click the **Enable workflow** button on the Actions page.
+Usa el ID de la playlist o pega el enlace completo de Spotify en `setup_auth.py`; el script extrae el ID.
 
----
+## Seguridad
 
-## Privacy & security
+No pegues tokens ni secrets en el codigo. Los valores sensibles deben vivir solo en GitHub Actions Secrets o en variables de entorno locales temporales.
 
-- Your Spotify credentials are stored only in your GitHub repository's encrypted Secrets vault — never in the code
-- The tool only requests the minimum permissions it needs: reading your play history and editing one playlist
-- No data is sent anywhere except directly to Spotify's official API
-- You can revoke access at any time at [spotify.com/account/apps](https://www.spotify.com/account/apps)
-
----
-
-## Tech stack
-
-- **Language**: Python 3 (standard library + `requests`)
-- **Automation**: GitHub Actions (free tier)
-- **API**: [Spotify Web API](https://developer.spotify.com/documentation/web-api)
-
----
-
-## License
-
-MIT — free to use, fork, and modify.
+El historial de escuchas no se sube como commit. Si ejecutas el script en local, `data/recent_plays.json` queda ignorado por git.

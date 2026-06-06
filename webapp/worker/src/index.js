@@ -23,8 +23,11 @@ const SPOTIFY_AUTH_URL  = 'https://accounts.spotify.com/authorize';
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const SPOTIFY_API       = 'https://api.spotify.com/v1';
 const SCOPES            = 'user-read-recently-played playlist-modify-public playlist-modify-private playlist-read-private';
-const TRACKS_TO_ADD     = 3;
-const DAYS_LOOKBACK     = 7;
+const TRACKS_TO_ADD          = 3;
+const DAYS_LOOKBACK          = 7;
+const HISTORY_RETENTION_DAYS = 14;
+const COLLECT_CRON           = '17,47 * * * *';
+const WEEKLY_CRON            = '0 20 * * 0';
 
 // ─────────────────────────────────────────────
 // Main Handler
@@ -57,7 +60,7 @@ export default {
   },
 
   async scheduled(event, env) {
-    await runWeeklyJob(env);
+    await runScheduledJob(event, env);
   },
 };
 
@@ -453,33 +456,39 @@ function errorPage(message) {
 // Weekly Job
 // ─────────────────────────────────────────────
 
-async function runWeeklyJob(env) {
-  console.log('=== Weekly Vault — Start ===');
+async function runScheduledJob(event, env) {
+  const shouldAddWeekly = event.cron === WEEKLY_CRON;
+  const mode = shouldAddWeekly ? 'collect+add' : 'collect';
+  console.log(`=== Weekly Vault — ${mode} start ===`);
   const { keys } = await env.USERS_KV.list({ prefix: 'user:' });
   console.log(`Processing ${keys.length} user(s)`);
 
   for (const key of keys) {
     const userId = key.name.replace('user:', '');
     try {
-      await processUser(userId, env);
+      await processUser(userId, env, shouldAddWeekly);
     } catch (err) {
       console.error(`[${userId}] Error: ${err.message}`);
     }
   }
 
-  console.log('=== Weekly Vault — Done ===');
+  console.log(`=== Weekly Vault — ${mode} done ===`);
 }
 
-async function processUser(userId, env) {
+async function processUser(userId, env, shouldAddWeekly) {
   const userData = await getUserData(userId, env);
-  if (!userData?.playlistId) {
-    console.log(`[${userId}] No playlist set, skipping`);
+  if (!userData) return;
+
+  const token = await getAccessToken(userData.refreshToken, env);
+  const collectedData = await collectUserHistory(userId, userData, token, env);
+
+  if (!shouldAddWeekly) return;
+  if (!collectedData.playlistId) {
+    console.log(`[${userId}] No playlist set, skipping weekly add`);
     return;
   }
 
-  const token  = await getAccessToken(userData.refreshToken, env);
-  const recent = await getRecentlyPlayed(token);
-
+  const recent = getStoredRecentPlays(collectedData);
   if (recent.length === 0) {
     console.log(`[${userId}] No plays this week`);
     return;
@@ -515,8 +524,67 @@ async function processUser(userId, env) {
     return;
   }
 
-  await addToPlaylist(token, userData.playlistId, toAdd);
+  await addToPlaylist(token, collectedData.playlistId, toAdd);
   console.log(`[${userId}] Done — added ${toAdd.length} track(s) ✅`);
+}
+
+async function collectUserHistory(userId, userData, token, env) {
+  const afterMs = latestStoredPlayMs(userData);
+  const latest = await getRecentlyPlayed(token, afterMs);
+  const { plays, added } = mergeAndTrimPlays(userData.plays || [], latest);
+
+  if (added > 0 || plays.length !== (userData.plays || []).length) {
+    userData.plays = plays;
+    userData.updatedAt = new Date().toISOString();
+    await env.USERS_KV.put(`user:${userId}`, JSON.stringify(userData));
+  }
+
+  console.log(`[${userId}] Collected ${added} new play(s), stored ${plays.length}`);
+  return userData;
+}
+
+function latestStoredPlayMs(userData) {
+  const plays = userData.plays || [];
+  if (plays.length === 0) return Date.now() - HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+  const latest = plays.reduce((max, play) => {
+    const ts = new Date(play.playedAt).getTime();
+    return Number.isFinite(ts) && ts > max ? ts : max;
+  }, 0);
+  return Math.max(0, latest - 1000);
+}
+
+function mergeAndTrimPlays(existing, incoming) {
+  const cutoff = Date.now() - HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const oldKeys = new Set();
+  const byKey = new Map();
+
+  for (const play of existing) {
+    const ts = new Date(play.playedAt).getTime();
+    if (!Number.isFinite(ts) || ts < cutoff || !play.uri) continue;
+    const key = `${play.playedAt}|${play.uri}`;
+    oldKeys.add(key);
+    byKey.set(key, play);
+  }
+
+  let added = 0;
+  for (const play of incoming) {
+    const ts = new Date(play.playedAt).getTime();
+    if (!Number.isFinite(ts) || ts < cutoff || !play.uri) continue;
+    const key = `${play.playedAt}|${play.uri}`;
+    if (!oldKeys.has(key)) added++;
+    byKey.set(key, play);
+  }
+
+  return {
+    plays: Array.from(byKey.values()).sort((a, b) => a.playedAt.localeCompare(b.playedAt)),
+    added,
+  };
+}
+
+function getStoredRecentPlays(userData) {
+  const weekAgoMs = Date.now() - DAYS_LOOKBACK * 24 * 60 * 60 * 1000;
+  return (userData.plays || []).filter(play => new Date(play.playedAt).getTime() >= weekAgoMs);
 }
 
 // ─────────────────────────────────────────────
@@ -539,21 +607,21 @@ async function getAccessToken(encryptedRefreshToken, env) {
   return (await res.json()).access_token;
 }
 
-async function getRecentlyPlayed(token) {
-  const weekAgoMs = Date.now() - DAYS_LOOKBACK * 24 * 60 * 60 * 1000;
+async function getRecentlyPlayed(token, afterMs) {
   const res = await fetch(
-    `${SPOTIFY_API}/me/player/recently-played?limit=50&after=${weekAgoMs}`,
+    `${SPOTIFY_API}/me/player/recently-played?limit=50&after=${afterMs}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) throw new Error(`recently-played failed: ${await res.text()}`);
   const data = await res.json();
 
   return (data.items || [])
-    .filter(item => new Date(item.played_at).getTime() >= weekAgoMs)
+    .filter(item => new Date(item.played_at).getTime() >= afterMs)
     .map(item => ({
-      uri:    item.track.uri,
-      name:   item.track.name,
-      artist: item.track.artists[0].name,
+      playedAt: item.played_at,
+      uri:      item.track.uri,
+      name:     item.track.name,
+      artist:   item.track.artists[0]?.name || 'Unknown artist',
     }));
 }
 

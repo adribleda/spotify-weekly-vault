@@ -9,9 +9,9 @@ binding = "USERS_KV"
 id      = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 
 # ── Cron Trigger ──────────────────────────────────────────────────────────────
-# Every Sunday at 20:00 UTC
+# Collect every 30 minutes and add the weekly top every Sunday at 20:00 UTC.
 [triggers]
-crons = ["0 20 * * 0"]
+crons = ["17,47 * * * *", "0 20 * * 0"]
 
 # ── Public env vars ───────────────────────────────────────────────────────────
 # Update REDIRECT_URI after your first deploy (you'll know the workers.dev URL).

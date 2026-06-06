@@ -131,7 +131,7 @@ npm run deploy
 
 Visita `https://weekly-vault.TU_SUBDOMINIO.workers.dev` — verás la landing page.
 
-El cron se ejecuta automáticamente cada domingo a las 20:00 UTC.
+El cron recolecta escuchas cada 30 minutos y añade el top semanal cada domingo a las 20:00 UTC.
 Puedes probarlo manualmente desde el panel de Cloudflare:
 **Workers & Pages → weekly-vault → Triggers → Cron Triggers → Run**
 

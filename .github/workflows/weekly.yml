@@ -1,33 +1,84 @@
-name: Weekly Top Tracks
+name: Spotify Weekly Vault
 
 on:
   schedule:
-    # Every Sunday at 20:00 UTC (21:00 Spain in winter, 22:00 in summer)
+    # Collect recent plays every 30 minutes, offset to avoid the weekly run.
+    - cron: "17,47 * * * *"
+    # Add the weekly top tracks every Sunday at 20:00 UTC.
     - cron: "0 20 * * 0"
-
-  # Allows you to run this manually from GitHub's website (for testing)
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to run"
+        required: true
+        default: "run"
+        type: choice
+        options:
+          - run
+          - collect
+          - add
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spotify-weekly-vault
+  cancel-in-progress: false
 
 jobs:
-  add-weekly-top:
+  spotify-weekly-vault:
     runs-on: ubuntu-latest
+
+    env:
+      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+      SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+      SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+      SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
+      SPOTIFY_TRACKS_TO_ADD: "3"
+      SPOTIFY_LOOKBACK_DAYS: "7"
+      SPOTIFY_HISTORY_RETENTION_DAYS: "14"
+      SPOTIFY_DATA_FILE: data/recent_plays.json
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install requests
+      - name: Restore collected play history
+        uses: actions/cache/restore@v4
+        with:
+          path: data/recent_plays.json
+          key: spotify-history-${{ github.run_id }}
+          restore-keys: |
+            spotify-history-
 
-      - name: Run weekly top tracks script
-        env:
-          SPOTIFY_CLIENT_ID:     ${{ secrets.SPOTIFY_CLIENT_ID }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
-          SPOTIFY_PLAYLIST_ID:   ${{ secrets.SPOTIFY_PLAYLIST_ID }}
-        run: python weekly_top.py
+      - name: Decide mode
+        id: mode
+        shell: bash
+        run: |
+          mode="${{ inputs.mode }}"
+          if [ -z "$mode" ]; then
+            if [ "${{ github.event.schedule }}" = "0 20 * * 0" ]; then
+              mode="run"
+            else
+              mode="collect"
+            fi
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Running mode: $mode"
+
+      - name: Run automation
+        run: python weekly_top.py "${{ steps.mode.outputs.mode }}"
+
+      - name: Save collected play history
+        if: steps.mode.outputs.mode != 'add'
+        uses: actions/cache/save@v4
+        with:
+          path: data/recent_plays.json
+          key: spotify-history-${{ github.run_id }}

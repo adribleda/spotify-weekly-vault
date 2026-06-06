@@ -1,202 +1,251 @@
 """
-spotify-weekly-vault — First-time setup
-----------------------------------------
-Run this script ONCE on your computer to get your Spotify refresh token.
-After that, everything runs automatically in the cloud.
-
-Requirements: Python 3.8+ (no extra installs needed)
-
-Usage:
-    python3 setup_auth.py   (Mac/Linux)
-    python setup_auth.py    (Windows)
+spotify-weekly-vault setup
+--------------------------
+Run once to authorize Spotify and print, or optionally upload, the GitHub
+Actions secrets used by the automation.
 """
 
-import sys
+from __future__ import annotations
+
+import argparse
+import getpass
 import json
-import webbrowser
+import secrets
+import shutil
+import subprocess
+import sys
+import threading
+import urllib.error
 import urllib.parse
 import urllib.request
-import secrets
+import webbrowser
 from base64 import b64encode
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
-
-# ─────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────
 
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
-SCOPES       = "user-read-recently-played playlist-read-private playlist-modify-public playlist-modify-private"
+SCOPES = "user-read-recently-played playlist-read-private playlist-modify-public playlist-modify-private"
+TOKEN_URL = "https://accounts.spotify.com/api/token"
 
 
-# ─────────────────────────────────────────────
-# TOKEN EXCHANGE
-# ─────────────────────────────────────────────
-
-def exchange_code_for_tokens(client_id, client_secret, code):
+def exchange_code_for_tokens(client_id: str, client_secret: str, code: str) -> dict:
     credentials = b64encode(f"{client_id}:{client_secret}".encode()).decode()
-
-    data = urllib.parse.urlencode({
-        "grant_type":   "authorization_code",
-        "code":         code,
-        "redirect_uri": REDIRECT_URI,
-    }).encode()
-
-    req = urllib.request.Request(
-        "https://accounts.spotify.com/api/token",
-        data    = data,
-        headers = {
+    data = urllib.parse.urlencode(
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI,
+        }
+    ).encode()
+    request = urllib.request.Request(
+        TOKEN_URL,
+        data=data,
+        headers={
             "Authorization": f"Basic {credentials}",
-            "Content-Type":  "application/x-www-form-urlencoded",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
         },
-        method = "POST",
+        method="POST",
     )
-
-    with urllib.request.urlopen(req, timeout=15) as response:
+    with urllib.request.urlopen(request, timeout=20) as response:
         return json.loads(response.read())
 
 
-# ─────────────────────────────────────────────
-# MAIN SETUP FLOW
-# ─────────────────────────────────────────────
+def build_auth_url(client_id: str, state: str) -> str:
+    params = urllib.parse.urlencode(
+        {
+            "client_id": client_id,
+            "response_type": "code",
+            "redirect_uri": REDIRECT_URI,
+            "scope": SCOPES,
+            "state": state,
+        }
+    )
+    return f"https://accounts.spotify.com/authorize?{params}"
 
-def main():
-    print()
-    print("=" * 60)
-    print("  spotify-weekly-vault — First-time setup")
-    print("=" * 60)
-    print()
-    print("This script will:")
-    print("  1. Ask for your Spotify app credentials")
-    print("  2. Open your browser to authorize access")
-    print("  3. Give you a REFRESH TOKEN to store in GitHub")
-    print()
-    print("Before continuing, make sure you have:")
-    print("  - A Spotify Developer app created at https://developer.spotify.com")
-    print("  - Added 'http://127.0.0.1:8888/callback' as a Redirect URI in that app")
-    print()
-    print("(See README.md -> Step 2 for detailed instructions)")
-    print()
 
-    # -- Get credentials
-    client_id     = input("Paste your Client ID:     ").strip()
-    client_secret = input("Paste your Client Secret: ").strip()
+def wait_for_callback(expected_state: str, timeout: int = 180) -> str:
+    result = {}
 
-    if not client_id or not client_secret:
-        print("\n[ERROR] Client ID and Client Secret cannot be empty.")
-        sys.exit(1)
+    class CallbackHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):  # noqa: A002
+            return
 
-    # -- Build authorization URL
-    state  = secrets.token_hex(16)
-    params = urllib.parse.urlencode({
-        "client_id":     client_id,
-        "response_type": "code",
-        "redirect_uri":  REDIRECT_URI,
-        "scope":         SCOPES,
-        "state":         state,
-    })
-    auth_url = f"https://accounts.spotify.com/authorize?{params}"
+        def do_GET(self):  # noqa: N802
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
 
-    # -- Open browser
-    print()
-    print("-" * 60)
-    print("  STEP A - Authorize in your browser")
-    print("-" * 60)
-    print()
+            if parsed.path != "/callback":
+                self.send_response(404)
+                self.end_headers()
+                return
 
-    # Try to open the browser automatically, but always show the URL
-    # as a fallback (webbrowser.open fails silently on WSL, some Linux
-    # desktops, headless environments, etc.)
-    browser_opened = False
+            if "error" in params:
+                result["error"] = params["error"][0]
+            elif params.get("state", [""])[0] != expected_state:
+                result["error"] = "Invalid state returned by Spotify."
+            elif "code" not in params:
+                result["error"] = "Spotify callback did not include a code."
+            else:
+                result["code"] = params["code"][0]
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            message = (
+                "<h1>Listo</h1><p>Ya puedes volver al terminal.</p>"
+                if "code" in result
+                else "<h1>Error</h1><p>Vuelve al terminal para ver el detalle.</p>"
+            )
+            self.wfile.write(
+                f"<!doctype html><html lang='es'><meta charset='utf-8'>{message}</html>".encode("utf-8")
+            )
+
     try:
-        browser_opened = webbrowser.open(auth_url)
-    except Exception:
-        pass
+        server = HTTPServer(("127.0.0.1", 8888), CallbackHandler)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not start the local callback server on {REDIRECT_URI}. "
+            "Close anything using port 8888 and run this script again."
+        ) from exc
 
-    if browser_opened:
-        print("Opening Spotify authorization in your browser...")
-    else:
-        print("Could not open your browser automatically.")
-        print("No worries — just copy and paste this URL into your browser:\n")
-
-    print()
-    print(f"  {auth_url}")
-    print()
-    print("  1. Open that link (if it didn't open automatically)")
-    print("     and click 'Agree' on the Spotify page.")
-    print()
-    print("  2. Your browser will then show an error page saying")
-    print("     'This site can't be reached'. That is NORMAL.")
-    print()
-    print("  3. Look at the ADDRESS BAR at the top of your browser.")
-    print("     You will see a long URL starting with:")
-    print("     http://127.0.0.1:8888/callback?code=...")
-    print()
-    print("  4. Copy that ENTIRE URL from the address bar.")
-    print()
-    print("-" * 60)
-    print("  STEP B - Paste the URL here")
-    print("-" * 60)
-    print()
-
-    callback_url = input("Paste the full URL from your browser here: ").strip()
-
-    if not callback_url:
-        print("\n[ERROR] No URL provided. Please try again.")
-        sys.exit(1)
-
-    # -- Extract the authorization code
+    timer = threading.Timer(timeout, server.shutdown)
+    timer.start()
     try:
-        parsed     = urllib.parse.urlparse(callback_url)
-        url_params = urllib.parse.parse_qs(parsed.query)
-    except Exception:
-        print("\n[ERROR] That doesn't look like a valid URL. Please try again.")
-        sys.exit(1)
+        server.handle_request()
+    finally:
+        timer.cancel()
+        server.server_close()
 
-    if "error" in url_params:
-        print(f"\n[ERROR] Spotify returned an error: {url_params['error'][0]}")
-        print("Make sure you clicked 'Agree' on the Spotify page.")
-        sys.exit(1)
+    if "code" in result:
+        return result["code"]
+    if "error" in result:
+        raise RuntimeError(result["error"])
+    raise RuntimeError("Timed out waiting for Spotify authorization.")
 
-    if "code" not in url_params:
-        print("\n[ERROR] Could not find the authorization code in that URL.")
-        print("Make sure you copied the full URL from the address bar,")
-        print("not the authorization URL from the terminal.")
-        sys.exit(1)
 
-    auth_code = url_params["code"][0]
-    print("\n[OK] Got the authorization code.")
+def extract_playlist_id(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    if "open.spotify.com/playlist/" in value:
+        parsed = urllib.parse.urlparse(value)
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2 and parts[0] == "playlist":
+            return parts[1]
+    if value.startswith("spotify:playlist:"):
+        return value.split(":")[-1]
+    return value
 
-    # -- Exchange code for tokens
-    print("Getting your refresh token from Spotify...")
+
+def gh_secret_set(repo: str, name: str, value: str) -> None:
+    subprocess.run(
+        ["gh", "secret", "set", name, "-R", repo],
+        input=value.encode("utf-8"),
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def maybe_upload_secrets(repo: str, values: dict) -> bool:
+    if not repo:
+        return False
+    if not shutil.which("gh"):
+        print("\nGitHub CLI ('gh') is not installed, so I cannot upload secrets automatically.")
+        return False
+
+    print(f"\nUploading secrets to {repo} with GitHub CLI...")
     try:
-        tokens = exchange_code_for_tokens(client_id, client_secret, auth_code)
-    except Exception as e:
-        print(f"\n[ERROR] Failed to get tokens from Spotify: {e}")
-        sys.exit(1)
+        for name, value in values.items():
+            gh_secret_set(repo, name, value)
+            print(f"  set {name}")
+        subprocess.run(["gh", "workflow", "enable", "weekly.yml", "-R", repo], check=False)
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else str(exc)
+        print(f"\nCould not upload all secrets with gh: {detail}")
+        return False
+
+    print("Secrets uploaded. The workflow is enabled if GitHub allowed it.")
+    return True
+
+
+def print_manual_values(values: dict) -> None:
+    print()
+    print("=" * 64)
+    print("GitHub Actions secrets")
+    print("=" * 64)
+    for name, value in values.items():
+        print(f"{name}={value}")
+    print()
+    print("Add each value as a separate repository secret in GitHub.")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Authorize Spotify for spotify-weekly-vault.")
+    parser.add_argument(
+        "--github-repo",
+        metavar="OWNER/REPO",
+        help="Optional. Upload secrets with GitHub CLI, e.g. adribleda/spotify-weekly-vault.",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+
+    print()
+    print("=" * 64)
+    print("spotify-weekly-vault setup")
+    print("=" * 64)
+    print()
+    print("Spotify Developer App must include this Redirect URI:")
+    print(f"  {REDIRECT_URI}")
+    print()
+
+    client_id = input("Spotify Client ID: ").strip()
+    client_secret = getpass.getpass("Spotify Client Secret: ").strip()
+    playlist = input("Spotify playlist link or ID: ").strip()
+    playlist_id = extract_playlist_id(playlist)
+
+    if not client_id or not client_secret or not playlist_id:
+        print("\nERROR: Client ID, Client Secret and playlist are required.")
+        return 1
+
+    state = secrets.token_hex(16)
+    auth_url = build_auth_url(client_id, state)
+
+    print("\nOpening Spotify authorization in your browser...")
+    print("If it does not open, paste this URL in your browser:")
+    print(auth_url)
+    webbrowser.open(auth_url)
+
+    try:
+        code = wait_for_callback(state)
+        tokens = exchange_code_for_tokens(client_id, client_secret, code)
+    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+        print(f"\nERROR: {exc}")
+        return 1
 
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
-        print("\n[ERROR] Spotify did not return a refresh token.")
-        print("Make sure your app has the correct scopes and Redirect URI.")
-        sys.exit(1)
+        print("\nERROR: Spotify did not return a refresh token. Re-run setup and approve every permission.")
+        return 1
 
-    # -- Print results
-    print()
-    print("=" * 60)
-    print("  SUCCESS! Here are your secrets for GitHub:")
-    print("=" * 60)
-    print()
-    print(f"  SPOTIFY_CLIENT_ID       ->  {client_id}")
-    print(f"  SPOTIFY_CLIENT_SECRET   ->  {client_secret}")
-    print(f"  SPOTIFY_REFRESH_TOKEN   ->  {refresh_token}")
-    print( "  SPOTIFY_PLAYLIST_ID     ->  (your playlist ID — see README Step 4)")
-    print()
-    print("Copy these values now and keep them PRIVATE.")
-    print("Never paste them in the code or share them publicly.")
-    print()
-    print("Next step: Go to README.md -> Step 4 to add these to GitHub Secrets.")
-    print()
+    values = {
+        "SPOTIFY_CLIENT_ID": client_id,
+        "SPOTIFY_CLIENT_SECRET": client_secret,
+        "SPOTIFY_REFRESH_TOKEN": refresh_token,
+        "SPOTIFY_PLAYLIST_ID": playlist_id,
+    }
+
+    uploaded = maybe_upload_secrets(args.github_repo, values)
+    if not uploaded:
+        print_manual_values(values)
+
+    print("\nDone.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
