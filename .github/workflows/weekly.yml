@@ -38,6 +38,7 @@ jobs:
       SPOTIFY_LOOKBACK_DAYS: "7"
       SPOTIFY_HISTORY_RETENTION_DAYS: "14"
       SPOTIFY_DATA_FILE: data/recent_plays.json
+      SPOTIFY_FORCE_ADD: "0"
 
     steps:
       - name: Checkout repository
@@ -62,8 +63,9 @@ jobs:
         id: mode
         shell: bash
         run: |
-          mode="${{ inputs.mode }}"
-          if [ -z "$mode" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            mode="${{ inputs.mode }}"
+          else
             if [ "${{ github.event.schedule }}" = "0 20 * * 0" ]; then
               mode="run"
             else
@@ -76,8 +78,7 @@ jobs:
       - name: Run automation
         run: python weekly_top.py "${{ steps.mode.outputs.mode }}"
 
-      - name: Save collected play history
-        if: steps.mode.outputs.mode != 'add'
+      - name: Save play history
         uses: actions/cache/save@v4
         with:
           path: data/recent_plays.json

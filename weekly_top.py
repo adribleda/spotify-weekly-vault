@@ -80,6 +80,7 @@ def get_config(require_playlist: bool = False) -> dict:
         "lookback_days": env_int("SPOTIFY_LOOKBACK_DAYS", 7),
         "retention_days": env_int("SPOTIFY_HISTORY_RETENTION_DAYS", 14),
         "data_file": Path(os.environ.get("SPOTIFY_DATA_FILE", DEFAULT_DATA_FILE)),
+        "force_add": os.environ.get("SPOTIFY_FORCE_ADD", "").strip() == "1",
     }
 
 
@@ -259,8 +260,8 @@ def collect(config: dict, token: str) -> tuple[dict, int]:
 
 def get_playlist_track_uris(token: str, playlist_id: str) -> set[str]:
     url = (
-        f"{SPOTIFY_API}/playlists/{urllib.parse.quote(playlist_id)}/items"
-        "?fields=items(track(uri)),next&limit=100"
+        f"{SPOTIFY_API}/playlists/{urllib.parse.quote(playlist_id, safe='')}/tracks"
+        "?limit=100&additional_types=track"
     )
     uris = set()
     while url:
@@ -276,7 +277,7 @@ def get_playlist_track_uris(token: str, playlist_id: str) -> set[str]:
 def add_tracks_to_playlist(token: str, playlist_id: str, uris: list[str]) -> None:
     request_json(
         "POST",
-        f"{SPOTIFY_API}/playlists/{urllib.parse.quote(playlist_id)}/items",
+        f"{SPOTIFY_API}/playlists/{urllib.parse.quote(playlist_id, safe='')}/items",
         token=token,
         body={"uris": uris, "position": 0},
     )
@@ -299,8 +300,22 @@ def weekly_candidates(history: dict, lookback_days: int) -> tuple[list[tuple[str
     return counter.most_common(), info
 
 
+def weekly_period_key(now: datetime | None = None) -> str:
+    year, week, _ = (now or utc_now()).isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def history_added_uris(history: dict) -> set[str]:
+    return {uri for uri in history.get("added_uris", []) if isinstance(uri, str)}
+
+
 def add_weekly_top(config: dict, token: str, dry_run: bool = False) -> int:
     history = load_history(config["data_file"])
+    period_key = weekly_period_key()
+    if history.get("last_added_period") == period_key and not config["force_add"]:
+        print(f"Weekly add already ran for {period_key}. Nothing to do.")
+        return 0
+
     ranked, info = weekly_candidates(history, config["lookback_days"])
     if not ranked:
         print(f"No collected plays found in the last {config['lookback_days']} day(s). Nothing to add.")
@@ -311,13 +326,19 @@ def add_weekly_top(config: dict, token: str, dry_run: bool = False) -> int:
         label = info.get(uri, uri)
         print(f"  #{index} {label} ({count} play{'s' if count != 1 else ''})")
 
+    known_added = history_added_uris(history)
     existing = get_playlist_track_uris(token, config["playlist_id"])
+    skip_uris = existing | known_added
     selected = []
-    print(f"\nPlaylist has {len(existing)} existing track(s). Selecting new tracks:")
+    print(
+        f"\nPlaylist has {len(existing)} existing track(s); "
+        f"{len(known_added)} track(s) are known from previous automation runs."
+    )
+    print("Selecting new tracks:")
     for uri, count in ranked:
         label = info.get(uri, uri)
-        if uri in existing:
-            print(f"  Skip: {label} is already in the playlist.")
+        if uri in skip_uris:
+            print(f"  Skip: {label} is already known/playlist-present.")
             continue
         selected.append(uri)
         print(f"  Add: {label} ({count} play{'s' if count != 1 else ''})")
@@ -326,6 +347,9 @@ def add_weekly_top(config: dict, token: str, dry_run: bool = False) -> int:
 
     if not selected:
         print("\nAll ranked tracks are already in the playlist. Nothing to add.")
+        if not dry_run:
+            history["last_added_period"] = period_key
+            save_history(config["data_file"], history)
         return 0
 
     if dry_run:
@@ -333,6 +357,9 @@ def add_weekly_top(config: dict, token: str, dry_run: bool = False) -> int:
         return len(selected)
 
     add_tracks_to_playlist(token, config["playlist_id"], selected)
+    history["added_uris"] = sorted(known_added | set(selected))
+    history["last_added_period"] = period_key
+    save_history(config["data_file"], history)
     print(f"\nDone. Added {len(selected)} track(s) to the playlist.")
     return len(selected)
 

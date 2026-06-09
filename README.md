@@ -89,6 +89,8 @@ Desde Actions, el desplegable `mode` permite:
 - `add`: calcula el ranking desde el historial guardado y actualiza la playlist.
 - `run`: hace `collect` y luego `add`.
 
+Un `run` o `add` que llegue a procesar la semana deja marcada esa semana como hecha. Asi, si otro run programado o manual se dispara en la misma semana, no vuelve a añadir las mismas canciones.
+
 En local tambien puedes ejecutar:
 
 ```bash

@@ -487,6 +487,11 @@ async function processUser(userId, env, shouldAddWeekly) {
     console.log(`[${userId}] No playlist set, skipping weekly add`);
     return;
   }
+  const periodKey = weeklyPeriodKey();
+  if (collectedData.lastAddedPeriod === periodKey) {
+    console.log(`[${userId}] Weekly add already ran for ${periodKey}`);
+    return;
+  }
 
   const recent = getStoredRecentPlays(collectedData);
   if (recent.length === 0) {
@@ -505,13 +510,14 @@ async function processUser(userId, env, shouldAddWeekly) {
   const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
 
   // Get existing playlist tracks
-  const existing = await getPlaylistTracks(token, userData.playlistId);
+  const existing = await getPlaylistTracks(token, collectedData.playlistId);
+  const knownAdded = new Set(collectedData.addedUris || []);
 
   // Pick top 3 not already in the playlist
   const toAdd = [];
   for (const [uri, count] of ranked) {
-    if (existing.has(uri)) {
-      console.log(`[${userId}] Skip (already in playlist): ${info[uri]}`);
+    if (existing.has(uri) || knownAdded.has(uri)) {
+      console.log(`[${userId}] Skip (already known/playlist-present): ${info[uri]}`);
       continue;
     }
     toAdd.push(uri);
@@ -521,10 +527,16 @@ async function processUser(userId, env, shouldAddWeekly) {
 
   if (toAdd.length === 0) {
     console.log(`[${userId}] All top tracks already in playlist`);
+    collectedData.lastAddedPeriod = periodKey;
+    await env.USERS_KV.put(`user:${userId}`, JSON.stringify(collectedData));
     return;
   }
 
   await addToPlaylist(token, collectedData.playlistId, toAdd);
+  collectedData.addedUris = Array.from(new Set([...(collectedData.addedUris || []), ...toAdd])).sort();
+  collectedData.lastAddedPeriod = periodKey;
+  collectedData.updatedAt = new Date().toISOString();
+  await env.USERS_KV.put(`user:${userId}`, JSON.stringify(collectedData));
   console.log(`[${userId}] Done — added ${toAdd.length} track(s) ✅`);
 }
 
@@ -587,6 +599,15 @@ function getStoredRecentPlays(userData) {
   return (userData.plays || []).filter(play => new Date(play.playedAt).getTime() >= weekAgoMs);
 }
 
+function weeklyPeriodKey(date = new Date()) {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
 // ─────────────────────────────────────────────
 // Spotify API Helpers
 // ─────────────────────────────────────────────
@@ -627,7 +648,7 @@ async function getRecentlyPlayed(token, afterMs) {
 
 async function getPlaylistTracks(token, playlistId) {
   const uris = new Set();
-  let url = `${SPOTIFY_API}/playlists/${playlistId}/items?fields=items(track(uri)),next&limit=100`;
+  let url = `${SPOTIFY_API}/playlists/${encodeURIComponent(playlistId)}/tracks?limit=100&additional_types=track`;
 
   while (url) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
